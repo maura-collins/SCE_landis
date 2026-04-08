@@ -1,0 +1,47 @@
+LandisData  "Biomass Harvest"
+
+
+>>----------------
+>> REQUIRED INPUTS
+>>-----------------
+Timestep    		10
+
+ManagementAreas 	"./inputFolders/SpatialData/management_30m.tif" << updated 2/1/26
+
+Stands     		"./inputFolders/SpatialData/stands_30m.tif" << updated 2/1/26
+
+>> -------------------------
+>> HARVESTING PRESCRIPTIONS
+>> -------------------------
+
+
+>>---- PRESCRIPTION_1 ---------------------------------------
+Prescription RandomClearCut
+    StandRanking 	Random
+    SiteSelection 	Complete
+    CohortsRemoved 	ClearCut
+
+
+
+
+>> ----------------------------------
+>> HARVESTING IMPLEMENTATION 
+>> ---------------------------------
+
+    HarvestImplementations
+>>	Mgmt Area	Prescription		Harvest Area	BeginTime	EndTime
+>> 	---------   	------------   		------------   	---------- 	--------
+	1		RandomClearCut			40%	0		100
+	
+
+
+	
+>> ------------
+>> OUTPUTS
+>> ----------
+
+PrescriptionMaps    harvest/base-harvest-prescripts-{timestep}.img
+EventLog            harvest/base-harvest-event-log.csv
+SummaryLog	    harvest/base-harvest-summary-log.csv
+
+

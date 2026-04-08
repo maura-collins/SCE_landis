@@ -1,0 +1,12 @@
+LandisData  EcoregionParameters 
+EcoregionParameters	PrecLossFrac	climateFileName	SoilType	RootingDepth	LeakageFrac	SnowSublimFrac
+eco1701	0.1	CCSM4_ecoregClimateFiles/17_ecoreg_rcp85CCSM4_climate.txt	SALO	1000	1	0.15
+eco1704	0.1	CCSM4_ecoregClimateFiles/17_ecoreg_rcp85CCSM4_climate.txt	LOSA	1000	1	0.15
+eco1705	0.1	CCSM4_ecoregClimateFiles/17_ecoreg_rcp85CCSM4_climate.txt	NRAT	1000	1	0.15
+eco1706	0.1	CCSM4_ecoregClimateFiles/17_ecoreg_rcp85CCSM4_climate.txt	ORGANIC	1000	1	0.15
+eco1801	0.1	CCSM4_ecoregClimateFiles/18_ecoreg_rcp85CCSM4_climate.txt	SALO	1000	1	0.15
+eco1804	0.1	CCSM4_ecoregClimateFiles/18_ecoreg_rcp85CCSM4_climate.txt	LOSA	1000	1	0.15
+eco1805	0.1	CCSM4_ecoregClimateFiles/18_ecoreg_rcp85CCSM4_climate.txt	NRAT	1000	1	0.15
+eco1806	0.1	CCSM4_ecoregClimateFiles/18_ecoreg_rcp85CCSM4_climate.txt	ORGANIC	1000	1	0.15
+eco2101	0.1	CCSM4_ecoregClimateFiles/21_ecoreg_rcp85CCSM4_climate.txt	SALO	1000	1	0.15
+

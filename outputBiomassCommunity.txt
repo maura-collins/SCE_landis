@@ -1,0 +1,5 @@
+LandisData "Output Biomass Community"
+Timestep 10
+MakeTable yes
+>>Species List: all <<optional
+>>Aboveground Live Biomas Map Names "output/communitybio/bio-{species}-{timestep}.img

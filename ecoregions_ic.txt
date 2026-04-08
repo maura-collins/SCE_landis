@@ -1,0 +1,12 @@
+LandisData  Ecoregions 
+>>Active	MapCode	ecoregion_name	description
+no	0	water	water
+yes	1701	eco1701	ClimRegion:17SoilType:SALO
+yes	1704	eco1704	ClimRegion:17SoilType:LOSA
+yes	1705	eco1705	ClimRegion:17SoilType:NRAT
+yes	1706	eco1706	ClimRegion:17SoilType:ORGANIC
+yes	1801	eco1801	ClimRegion:18SoilType:SALO
+yes	1804	eco1804	ClimRegion:18SoilType:LOSA
+yes	1805	eco1805	ClimRegion:18SoilType:NRAT
+yes	1806	eco1806	ClimRegion:18SoilType:ORGANIC
+yes	2101	eco2101	ClimRegion:21SoilType:SALO

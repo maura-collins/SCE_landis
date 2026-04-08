@@ -1,0 +1,20 @@
+LandisData "PnET-Succession"
+PnET-Succession	Value  
+Timestep 1 
+StartYear 2010 
+SeedingAlgorithm  WardSeedDispersal 
+Latitude  42.5  
+
+InitialCommunities     "./inputFolders/textFiles/ic_petersham_2026-02-26.csv"  
+InitialCommunitiesMap   "./inputFolders/SpatialData/petershamICmaskedINT.tif" 
+
+LitterMap		"./inputFolders/SpatialData/litter_30m.tif" 
+WoodyDebrisMap		"./inputFolders/SpatialData/cwd_30m.tif"
+
+EcoregionParameters  "./inputFolders/textFiles/ecoregions_ic_petershammasked_Ccsm.txt" << rcp 8.5 climate files
+>>EcoregionParameters  "./inputFolders/textFiles/eco_30m.txt"  << static climate files
+
+
+PnETGenericParameters  "./inputFolders/textFiles/generic_PNET_ANP_OLDDD.txt"
+PnETSpeciesParameters	"./inputFolders/textFiles/species_PNET_ANP_OLDD20231127CalibrationCopyWithinRanges.txt"
+

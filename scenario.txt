@@ -1,0 +1,30 @@
+LandisData Scenario
+Duration 300
+Species "./inputFolders/textFiles/SPECIES_LANDIS_NEW_ENGLAND.txt" 
+
+Ecoregions "./inputFolders/textFiles/ecoregions_ic.txt"	 
+EcoregionsMap "./inputFolders/SpatialData/eco_30m.tif" 			 
+
+CellLength 30 << meters  							 
+>> Succession Extension     Initialization File
+>> --------------------     -------------------
+"PnET-Succession" "PnET_succession_Land.txt" 
+>> Disturbance Extensions   Initialization File
+>> ----------------------   -------------------
+     "Biomass Harvest"	    harvest_Setup.txt				
+
+	
+
+>> Other Extensions         Initialization File
+>> ----------------         -------------------
+ "Output-PnET" "./inputFolders/textFiles/pnet_biomass_output_landscape.txt"		
+
+ "Output Biomass Community" "./inputFolders/textFiles/outputBiomassCommunity.txt"
+
+RandomNumberSeed  4084232854  << optional parameter; default = the seed is randomly generated using the current time
+>>CO2 increasing with climate: TRUE
+
+
+
+
+
