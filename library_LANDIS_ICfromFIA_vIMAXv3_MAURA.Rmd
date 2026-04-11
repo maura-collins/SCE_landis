@@ -1,0 +1,960 @@
+---
+title: "library_LANDIS_ICfromFIA_vIMAXv3.Rmd"
+author: "Danelle Laflower"
+date: "2025-06-16"
+output: html_document
+---
+
+
+#11/10/2025 added Xiaojie's imputed raster
+#default New England Imputation
+#8/13/2025 redid the ic methodology to reflect the calibration methodology
+#8/5/2025 redid calibration methodology
+#6/16/2025 
+
+#probably do not need
+#NOTICE and run always
+```{r pos version}
+# lucy lee
+#last updated  this path on 8/11/2022
+posPath <- "Y:/Lee/NIFA/Data/POS_Update/POS_Update.gdb"
+posLayer <- "POSv1_3_March2022_01"
+posRoot <-  "Y:/Lee/NIFA/Data/POS_Update" # "Y:/Thompson_Lab_POS/Data"
+#
+```
+
+#run always
+```{r bring in crosswalks fia data rasters,include=FALSE}
+library(sf)
+library(raster)
+library(terra)
+library(tidyverse)
+library(kableExtra)
+source('Y:/FIA_EDGE/Rcode/sourceFunctions.R')
+source("Y:/LANDIS/Rcode/landis_source.R")
+sppMaxBio <- read.csv("Y:/LANDIS/MA_ulsa/sppMaxBio.csv")
+
+#defaults
+fiafilteryear <- 1999  # 1/19/2021 changed from 2000 and added this as object
+
+# 
+stateCodesToInclude <- c(9,23,25,33,44,50) 
+statesToInclude <- c(c("ME","NH","VT","CT","MA","RI"))  #STATES
+#
+#ageBins <- c(0,10,25,50,75,100,125, 175)  
+ageBins <- c(0,25,50,75,100,125, 175)  #after REU 2025 (Maura Collins) decided to stop using 10 year old age bin 
+
+#
+statecdcw <- read.csv("Y:/FIA/stateCodes.csv")
+#
+```
+
+#CHECK and only run if you are changing from the defaults (all six New England states, 1999 min year, and ageBins)
+```{r default filter overrides}
+# OVERRIDES run fiafilteryear and/or statecode lines
+#fiafilteryear <- 1990  
+
+# 
+# stateCodesToInclude <- c(23) 
+# statesToInclude <- c(c("ME"))  #STATES
+#
+#statesubset <- c("MA") #commented out 2/24/26 to quit overriding you NEED all the states for ric 
+#stateCodesToInclude <- statecdcw %>% filter(STATE %in% statesubset) %>% pull(STATECD)
+#statesToInclude <- statecdcw %>% filter(STATE %in% statesubset) %>% pull(STATE)
+
+
+#ageBins <- c(0,10,25,50,75,100,125, 175)  
+ageBins <- c(0,25,50,75,100,125, 175)  #after REU 2025 (Maura Collins) decided to stop using 10 year old age bin
+#
+```
+
+#run always
+#bring in FIA data
+```{r plot data from source code}
+##
+#the following source code requires having already called in 
+stateCodesToInclude
+statesToInclude
+fiafilteryear
+source("Y:/FIA/Rcode/fia_importAndProcess_notTrees_StatesToInclude.R") #MC: this file the source files are commented out so the code doesn't run? 
+#source("Y:/FIA/Rcode/fia_importAndProcess_notTrees_StatesToInclude20250912.R") #MC: this is the other version of the file, seems to run okay here but I don't know how they're different
+source("Y:/FIA/Rcode/fia_importAndProcess_trees_StatesToInclude.R")
+
+#
+plotCondftPlotForestArea <- plotCondft %>% 
+  dplyr::select(PLT_CN,INVYR,concatPlot,plotAreaForest,topSiteCLCD,topSICOND,topFORTYPCD)
+#
+```
+
+```{r dclass function outputs}
+#originally part of attribdb
+ba5cmdclass <- ba5cmdclass(trees1)
+dclass5cmSummary <- dclass5cmSummary(trees1)
+#
+```
+
+
+#pull fia plot data for target plots  
+
+#need this after sources load
+
+```{r run this}
+##################################################################################################  run between hash marks               
+# YOU MUST RUN THESE 2/3 LINES   and set up the output location and name     
+#landisspp32 landispp34 and lookup and lookup 33 are in fia_source.R        
+#filtering out pita IS landisspp32
+spcdlandisspp <- landisspp34 %>% filter(genuspec!="pinutaed") %>% mutate(genuspec=tolower(genuspec)) # landisspp32 # 34 has jack pine, and 32 does not
+lookup <- lookup33 %>% filter(genuspec %in% spcdlandisspp$genuspec) %>% filter(broughtInFrom=="duveneckFIA") #32 spp  # lookup OR  lookup33 #  #lookup filters to only inlcude these species
+#
+##################################################################################################  run between hash marks 
+```
+
+###########################
+call in IC raster and crosswalk
+###########################
+#Maura skip this
+#bring in if necessary
+```{r full New England 30 m imputed raster}
+#11/10/2025 copied from :   D:\Gao\projects\imax_fia\out\fia_imputation\impefm_v2_ne.tif
+
+imp30 <- terra::rast("Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData/fia_imp_30/impefm_v2_ne.tif")
+imp30l1 <- imp30[[1]]
+imp30l1 #mc did not call this line 2/12
+#
+# crosswalk #mc did call this line 2/12
+impRascwFull <- read.csv("Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData/fia_imp_30/imp_fea_dt.csv") %>% 
+  rename(mapcode=levels,PLT_CNx=PLT_CN) %>% 
+  mutate(PLT_CN=substr(PLT_CNx,2,nchar(PLT_CNx)))
+#
+```
+
+#Maura skip this
+#don't run unless this is what you are trying to do
+```{r crop rasters}
+# crop to study area
+# target landscape
+library(terra)
+matowns <- st_read("Y:/New England Scenarios Spatial Data/Clipped and Projected Data/Study_Area_Shapefiles/Mass_towns.shp")
+petersham <- matowns %>% 
+  filter(TOWN=="PETERSHAM")
+#
+v <- vect(petersham)
+r <- rast(v, res=30)
+z <- rasterize(v, r)
+plot(z)
+imp30l1proj <- terra::project(imp30l1,crs(z) ,method="near",res=30)
+petershamicras <- crop(imp30l1proj,z)
+ext(petershamicras) <- ext(z)
+
+writeRaster(z,"Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData/petershamSubset/petershamTemplate.tif")
+writeRaster(petershamicras,"Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData/petershamSubset/petershamIC.tif",overwrite=TRUE)
+#
+ic <- petershamicras*z
+writeRaster(ic,"Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData/petershamSubset/petershamICmasked.tif",overwrite=TRUE)
+petershamicfreq <- freq(ic)
+petershamicfreqwPLT_CN <- petershamicfreq %>% 
+  rename(mapcode=value) %>% 
+  left_join(impRascwFull) %>% 
+  dplyr::select(-c(layer,PLT_CNx))
+write.csv(petershamicfreqwPLT_CN,"Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData/petershamSubset/petershamICcw.csv",row.names=FALSE)
+#
+```
+
+#Maura probably skip this
+```{r call in IC raster and crosswalk and identify directories}
+#where you want the files to go
+wdRoot <- "D:/LANDIS"
+simuPrefix <- "petersham"
+icMapNameOut <- paste0("ic_",simuPrefix, "masked")
+ecoMapNameOut <- paste0("eco_",simuPrefix)
+#simuRoot <- paste0(wdRoot,"/",simuPrefix)
+#
+spatialDirOut <- paste0(wdRoot,"/inputFolders/SpatialData")
+textFilesOut <- paste0(wdRoot,"/inputFolders/textFiles")
+#climate folder is in specific simu folder
+climateFolder <- "D:/mcollins/SCE/petersham_simu/CCSM4_ecoregClimateFiles" #switch to the other folder (this is static )
+#climateFolder <- paste0(simuPrefix,"/daymet_ecoregClimateFiles") # might need to update here
+#climateName <- "CcsmStatic" #this goes with the 2004 files
+climateName <- "Ccsm" #this goes with the non 2004 files, you need to change it 
+#climateName <- "daymet"
+
+
+#where you get the inputs from
+#Initial Community setup
+#wdRootIn <- "D:/Gao/projects/owner-carbon/pipe/timber_harvest"
+#spatialDir <- (wdRootIn)
+#textFiles <- (wdRootIn)
+# Imputed raster name with extension separate 
+#incsvrasName <- "maine_imp_1995_200m_stdage_align_ecomap_250812" 
+#ext <- ".tif"
+#
+# crosswalk name (should be the same as the imputed raster)
+#cwName <- paste0(wdRootIn,"/",incsvrasName,".csv")
+#
+#xiaojie is not alway consistent with the way he outputs these csv, sometimes PLT_CN has an X in front and sometimes it does not.
+#MC commented line 190 out, will see if need later 1/31.26
+#cw <- read.csv(cwName) %>% rename(mapcode=level,PLT_CN=name) # %>% mutate(PLT_CN=substr(name,2,nchar(name)))
+# for code consistency
+icMapName <- incsvrasName
+
+#
+#ecoregion raster that matches the imputed raster and is used to create ecoregion text file setup
+#MC commented line 197 out, will see if need later 1/31.26
+ecoras2 <- rast("D:/mcollins/SCE/petersham_simu/inputFolders/SpatialData/eco_30m_masked.tif") #MC: I want to see if using the ecoregion raster will work 2/1/26
+#ecoras <- rast(paste0(wdRootIn,"/maine_eco_map_200_align_impmap_250812.img") ) #last updated 8/12/2025
+
+#should not need this but keeping for now
+#fullcw <-  read.csv("Y:/DISES_ME/inputFolders/SpatialData/maine_imp_landis_10.csv") %>% mutate(PLT_CN=substr(name,2,nchar(name))) %>% rename(mapcode=level) %>% dplyr::select(-name) %>% mutate(PLT_CN=as.numeric(PLT_CN))
+#
+```
+
+#maura skip this
+#use this one!!!!!!!!!!!!
+#read in imp raster
+#IMPT add correct crosswalk
+```{r set up df to pull fia plots in raster}
+#
+{
+#icRasFullPath <- paste0(wdRootIn,"/", icMapName,ext) 
+#icRasFullPath
+  #put path in to ic raster for ic masked int
+icRasFullPath <- rast("G:/mcollins/petersham_simusdl/inputFolders/SpatialData/petershamICmaskedINT.tif") #MC 2/12/26
+icras <- raster(icRasFullPath )
+#freqOuticRas <- as.data.frame(freq(icras))
+freqOuticRas <- freq(icras) %>% as.data.frame()
+icrasVals <- freqOuticRas %>% pull(value) #mc 2/12 did not run this line
+icrasVal <- getValues(icras)
+icrasValdistinct <- unique(icrasVal)
+length(icrasValdistinct)
+#pull directly from target raster #this could further subset your plots if your ic raster doesn't match the cw or if you are using the fullcw
+targPlotsdf <- impRascwFull %>% filter(mapcode %in% icrasValdistinct) %>% distinct() %>% arrange(mapcode) %>% mutate(PLT_CN = as.numeric(PLT_CN))
+
+}
+#
+# summary(freqOuticRas)
+#
+
+#
+```
+
+
+
+#####################################################
+## IC text file preparation NEEDS targICpltcn   - make sure you have the one you want
+#####################################################
+#maura start here
+#override ONLY run if not using raster 
+```{r override targPlotsdf when not using raster}
+#
+wdRoot <- "Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData/petershamSubset"
+spatialDirOut <- paste0(wdRoot,"/inputFolders/SpatialData")
+textFilesOut <- paste0(wdRoot,"/inputFolders/textFiles")
+
+# Xiaojie imputed raster cw
+#ric <- read.csv("Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData/petershamSubset/petershamICcw.csv") 
+
+#
+path <- "Y:/LANDIS/INPUT_DATA_NEW_ENGLAND/COMMON_INPUT_FILES_NEW_ENGLAND/SpatialData"
+date <- ""
+icMapName <- paste0("petershamICmasked")
+# name <- paste0("fullsetcw_",icMapName)
+
+# ext  <- "csv"
+# pathnamedateext <- paste0(path,"/",name,".",ext)
+# pathnamedateext
+# fullsetcw <- read.csv(pathnamedateext) %>% 
+#   left_join(pltcncw) %>% 
+#   dplyr::select(mapcode,concatPlot,PLT_CN) %>% 
+#   distinct()
+#
+# fullsetcw <- fullset
+# targPlotsdf <- fullsetcw # %>% dplyr::select(PLT_CN,mapcode)
+
+#temp 8/26/2025 set up 250 cell from plots xiaojie chose
+#targPlotsdf <- ric # <- this is what it was originally, changing cw 2/12/26
+#targPlotsdf <- impRascwFull #it doesn't actually work with impRascwFull but ric does go through 
+# icMapNameOut <- paste0("ic_n250_xiaojie_",date)
+
+#set output path here
+#textFiles <- "Y:/DISES_ME/n250NewEnglandCalibRunData"
+#  go to chunk:  {r for calibration - getting the plot growth}
+
+#
+```
+
+#maura skip this
+#override ONLY run if not using raster - dises
+```{r override targPlotsdf when not using raster}
+# 250 ME plots with 20 years measurements that Xiaojie chose to check calibration
+r250 <- read.csv("D:/Gao/projects/owner-carbon/pipe/timber_harvest/maine_250fia4landis_calib.csv") %>%
+  rename(xPLT_CN=PLT_CN,eco=ecoregion) %>% 
+      mutate(concatPlotF=factor(concatPlot),
+        mapcode=as.integer(concatPlotF) ,
+        PLT_CN= round(as.numeric(substr(xPLT_CN,2,nchar(xPLT_CN))))) %>% 
+  dplyr::select(-c(xPLT_CN,concatPlotF) )
+#this is what i am using for the 250 NE cell simu 
+# July 2025 250 cell calib run
+#this one is for the new england calibration run 
+# fullset created in:  Y:/DISES_ME/Rcode/analyzeNewEnglandAggIMP200m.Rmd
+path <- "Y:/DISES_ME/n250NewEnglandCalibRunData"
+date <- "2025-08-21"
+icMapName <- paste0("ic_n250_newEnglandNoDist_swd_",date )
+name <- paste0("fullsetcw_",icMapName)
+
+ext  <- "csv"
+pathnamedateext <- paste0(path,"/",name,".",ext)
+pathnamedateext
+fullsetcw <- read.csv(pathnamedateext) %>% 
+  left_join(pltcncw) %>% 
+  dplyr::select(mapcode,concatPlot,PLT_CN) %>% 
+  distinct()
+#
+# fullsetcw <- fullset
+targPlotsdf <- fullsetcw # %>% dplyr::select(PLT_CN,mapcode)
+
+#temp 8/26/2025 set up 250 cell from plots xiaojie chose
+targPlotsdf <- r250
+icMapNameOut <- paste0("ic_n250_xiaojie_",date)
+
+
+textFiles <- "Y:/DISES_ME/n250NewEnglandCalibRunData"
+#  go to chunk:  {r for calibration - getting the plot growth}
+
+#
+```
+
+#maura skip this
+8/18/2025 
+```{r disturbance summary}
+ fullsetcw %>% 
+  left_join(plotCondft) %>% group_by(topDist) %>%  tally()
+#
+fullsetdist <- fullsetcw %>% 
+  left_join(plotCondft) %>% 
+  filter(topDist != "0_0_0") %>% 
+  dplyr::select(mapcode,PLT_CN,topDist)
+# write.csv(fullsetdist,"Y:/DISES_ME/n250NewEnglandCalibRunData/prepFiles/n250NewEngland_mapcodeTopDist.csv",row.names=FALSE)
+#
+```
+
+#maura skip this
+#read in ic raster and summarise
+#run always IF have run {r set up df to pull fia plots in raster}
+```{r ic raster summary}
+##
+icfreqSummary <- freqOuticRas %>% 
+  filter(value>0) %>% 
+    rename(mapcode=value) %>% 
+  left_join(targPlotsdf) %>% 
+  filter(!is.na(PLT_CN)) %>% 
+  mutate(nNon0=sum(count,na.rm=TRUE),
+         quantile=ntile(count,4)) %>% 
+  group_by(quantile) %>% 
+  mutate(min=min(count,na.rm=TRUE),
+         max=max(count,na.rm=TRUE)) %>% 
+  mutate(mapcodeVal="30mFirstNeighbor")
+
+icfreqSummary %>% dplyr::select(nNon0,quantile,min,max) %>% distinct() %>% arrange(quantile)
+
+#
+```
+
+#maura do this
+#run this for non-calibration simulations
+#run as chunk to create the ic text file
+#now maxing tree age at STDAGE
+#two part reallocation method updated on 8/13/2025
+#this is for non-calibration IC
+```{r FIA tree- species level plot information}
+#fill in missing SI and join to site index coef and calculate age----
+#
+# used to calculate ages
+# make sure genuspec is lowercase by running lines 298 299
+lookup2 <- lookup %>% ungroup  %>% dplyr::select(genuspec,"b1","b2","b3","b4","b5") #"SPCD"=spp_num, %>% mutate(gesp=toupper(paste0(substr(genuspec,1,2),substr(genuspec,5,6))))
+
+liveTreesImp2 <- alltrees %>% #alltrees
+  dplyr::select(CN,PLT_CN,PLOT,SUBP,STATECD,INVYR,PLOT,SUBP,TREE,STATUSCD,SPCD,DIA,HT,CCLCD,SITREE,TPA_UNADJ,CARBON_AG,CARBON_BG) %>% 
+  drop_na(DIA) %>% 
+  filter(INVYR >= 1999) %>% #all earlier years do not have HT or TPA_ADJ
+  filter(STATUSCD==1) %>% 
+  {. ->> after_filters} %>%  
+
+  right_join(targPlotsdf) %>%
+  {. ->> after_rightjoin} %>% 
+  #2024 plotAreaForest improvement - add to ICfromFIA
+  left_join(plotCondft) %>% 
+  {. ->> after_plotcondft} %>% 
+  #
+  group_by(PLT_CN,mapcode,plotAreaForest) %>% 
+  mutate(nsubp=length(unique(SUBP))) %>% 
+  ungroup() %>% 
+  dplyr::select(CN,PLT_CN,PLOT,SUBP,mapcode,STATECD,INVYR,MEASYEAR,PLOT,SUBP,plotAreaForest,nsubp,topSiteCLCD,topSICOND,topFORTYPCD,topSTDAGE,TREE,SPCD,DIA,HT,CCLCD,SITREE,TPA_UNADJ,CARBON_AG,CARBON_BG) %>% 
+  mutate(agb_g= 2*(CARBON_AG)*453.592, #carbon pounds to biomass g
+         AGBMg=agb_g*gramToMegagram,
+         AGCMg=AGBMg/2,
+         AGCMgha=ifelse(DIA<5,AGCMg*(10000/(microplotArea*nsubp)),AGCMg* (10000/plotAreaForest) ),
+         #AGBMgha=ifelse(DIA >= 5,AGBMg* (10000/plotAreaForest),ifelse(DIA < 5,AGBMg*(10000/(nsubp*13.49577)),  AGBMg* (10000/plotAreaForest) ) ), #
+         agb_gm2=AGCMgha*2*100) %>% 
+ # left_join(cond1) %>% 
+  left_join(spcdlandisspp) %>% 
+  #left_join(landisspp) %>% 
+  mutate(gesp2=ifelse(is.na(as.character(gesp)),"OTHR",as.character(gesp)),
+         H_assigned=ifelse(is.na(HT),4,HT)) %>% 
+  mutate(SIndex=ifelse(is.na(topSICOND)&topSiteCLCD==6, 40,topSICOND),
+         SIndex=ifelse(is.na(topSICOND)&topSiteCLCD==7,20,topSICOND)) %>% 
+  mutate(SIndex=replace_na(SIndex,53)) %>% 
+  left_join(lookup2) %>% #si coef  #(sicoef[,c(3,10,4:8)]) %>%   #
+  mutate(calc_age=round(ifelse(H_assigned <= (b1*SIndex^(b2)),
+                               (log (1-(H_assigned/(b1 * SIndex^(b2)))^(1/(b4*(SIndex^(b5)))))/b3),
+                               (log (1-(((b1*SIndex^(b2))-1)/(b1 * SIndex^(b2)))^(1/(b4*(SIndex^(b5)))))/b3 ) ),0 )) %>% 
+  mutate(calc_age=as.integer(ifelse(calc_age==0,1,calc_age)) ) %>% 
+  #don't allow cohorts to be older than STDAGE
+  mutate(calc_ageAdj=ifelse(calc_age <= topSTDAGE,calc_age,topSTDAGE)) %>% 
+   # IMPORTANT BINS ARE SET IN OBJECT in call in chunk
+    #mutate(calcAgeCut=cut(calc_age, breaks=c(ageBins, max(calc_age,na.rm=TRUE)+1  ) ) )  
+  mutate(calcAgeCut=cut(calc_ageAdj, breaks=c(ageBins, round(max(calc_age,na.rm=TRUE)+1,0)  ) ) ) %>% 
+  filter(!is.na(CN)) %>% #2/24 MC changed this from CN to PLT_CN
+  {. ->> after_CNfilter} %>%  
+  mutate(SPCD=ifelse(gesp2!="OTHR",SPCD,NA)) 
+# OTHR species have NA for calcAgeCut !!!
+#
+cat("After filters (before join):", length(unique(after_filters$PLT_CN)), "PLT_CNs\n")
+cat("After right_join:", length(unique(after_rightjoin$mapcode)), "mapcodes\n")
+cat("After plotCondft join:", length(unique(after_plotcondft$mapcode)), "mapcodes\n")
+cat("After CN filter:", length(unique(after_CNfilter$mapcode)), "mapcodes\n")
+cat("Final liveTreesImp2:", length(unique(liveTreesImp2$mapcode)), "mapcodes\n")
+
+
+#4/17/2024 contains non landis spp
+liveTreesImp2 %>% 
+  drop_na(genuspec) %>% 
+  dplyr::select(PLT_CN,mapcode,everything()) %>% 
+  separate(calcAgeCut,into=c("delete","bin"),sep=c(","), remove=FALSE, convert=TRUE) %>% 
+  mutate(ageBin=as.integer(substr(bin,1, nchar(bin)-1)) ) %>% 
+ # mutate(ageBin=replace(ageBin,ageBin > 150, 175)) %>% #changed 9/26 from >150 # commented out 7/24/2025
+  left_join(landisspp) %>% 
+  mutate(ageBinAdj=ifelse(ageBin <= longevity,ageBin,(longevity-CBS) ) )# %>%  #Mc commented out 1/31/26
+#saveRDS(paste0(textFiles,"/liveTreesAgeBins",icMapName,"_",Sys.Date(),".Rds") )
+
+#
+#summary for IC biomass  -  this no longer filters out non landis species
+tree_dataSummary <- liveTreesImp2 %>% 
+  #drop_na(genuspec) %>% #commented out 4/17/2024 this will be OTHR under gesp2
+  dplyr::select(PLT_CN,mapcode,everything()) %>% 
+  separate(calcAgeCut,into=c("delete","bin"),sep=c(","), remove=FALSE, convert=TRUE) %>% 
+  mutate(ageBin=as.integer(substr(bin,1, nchar(bin)-1)) ) %>% 
+  # mutate(ageBin=replace(ageBin,ageBin > 150,175)) %>% #changed 9/26 from >150  # commented out 7/24/2025
+  left_join(landisspp ) %>% 
+  mutate(ageBinAdj=ifelse(ageBin<=longevity,ageBin,(longevity-CBS) ) ) %>%
+# made SPCD NA for gesp2==OTHR so there should be one line for non landis spp
+  group_by(PLT_CN,nsubp,mapcode,ageBinAdj,SPCD,gesp2,genuspec) %>% 
+  summarise(sumCohortAGBgm2act=round(sum(agb_gm2,na.rm=TRUE)),
+            ftc=max(topFORTYPCD),nStems=length(PLT_CN)) %>%
+  arrange(PLT_CN,SPCD,ageBinAdj ) %>% 
+  left_join(forest_type_ref[,c(1,2)],by=c("ftc"="VALUE")) %>% 
+  
+  ####################### temp max bio override 8/5/2025 #hoping pnet 6 can handle more initial biomass  
+  mutate(maxBio = 30000,
+         sumCohortAGBgm2adj=ifelse(sumCohortAGBgm2act>maxBio,maxBio,sumCohortAGBgm2act)) %>% 
+  ##############
+
+  # original  #############################  reduce loss from high bio cohorts
+  # left_join(sppMaxBio %>% rename("gesp2"="gesp")) %>% 
+  #   replace_na(list("maxBio"= 16721)) %>% #16721 is the mean maxBio for the 25 species simu 
+  # mutate(sumCohortAGBgm2adj=ifelse(sumCohortAGBgm2act>maxBio,maxBio,sumCohortAGBgm2act)) %>% 
+  ############################
+
+  group_by(PLT_CN) %>% 
+  mutate(plotAGBgm2=sum(sumCohortAGBgm2adj),
+         pctPlotBio=sumCohortAGBgm2adj/plotAGBgm2,
+         plotAGBgm2act=sum(sumCohortAGBgm2act),
+         pctPlotBioact=sumCohortAGBgm2act/plotAGBgm2act) %>% 
+  droplevels() %>% 
+  mutate(lsp=ifelse(gesp2=="OTHR","no","yes")) %>% 
+  group_by(PLT_CN,mapcode,lsp) %>% 
+  mutate(groupAGBgm2act=sum(sumCohortAGBgm2act)) # group is landis or not-landis
+
+#length(unique(tree_dataSummary$mapcode))
+
+#
+#saveRDS(tree_dataSummary,paste0(textFiles,"/tree_dataSummary_",icMapName,"_",Sys.Date(),".Rds") ) #commented out MC 1/21/26
+#
+tdsoFull <- tree_dataSummary %>% dplyr::select(PLT_CN,mapcode,lsp,plotAGBgm2act,groupAGBgm2act) %>% distinct() %>% pivot_wider(id_cols=c(PLT_CN,mapcode,plotAGBgm2act),names_from=lsp,values_from=groupAGBgm2act) %>% replace_na(list(yes=0)) %>%  mutate(pctlandisspp=round(yes/plotAGBgm2act*100))
+#
+# reallocate OTHR -uncommon cohort biomass to account for it in t0
+# NOTE on 8/13/2025 improved upon this method by collapsing some of the age bins before final reallocation 
+cwout3 <- tree_dataSummary %>% 
+  dplyr::select(PLT_CN,mapcode,ageBinAdj,gesp2,genuspec,sumCohortAGBgm2act,pctPlotBioact) %>% 
+  group_by(PLT_CN,mapcode) %>% 
+  arrange(PLT_CN,mapcode,pctPlotBioact) %>% 
+  mutate(spN=length(unique(genuspec))) %>% 
+  mutate(acpct=round(cumsum(pctPlotBioact),2) ) %>%
+  
+  mutate(reallocate=ifelse(gesp2=="OTHR","other",
+                     ifelse(acpct< 0.05 & gesp2 !="OTHR","reallocateAge","keep")) ) %>% 
+  # try to reallocate to a different cohort of the same species first
+  group_by(PLT_CN,mapcode,gesp2) %>% 
+  arrange(PLT_CN,mapcode,gesp2,ageBinAdj) %>% 
+  mutate(collapseAge= ifelse((reallocate =="reallocateAge" & (lead(reallocate)== "keep"|lead(reallocate)=="reallocateAge" ))|lag(reallocate)=="reallocateAge", "yes",
+                            ifelse((reallocate=="keep"  & lag(reallocate)== "reallocateAge") , "yes","no"
+                                        ))) %>% 
+  # the slow path to filling in the collapsed age bins
+  mutate(reallocAgeBinAdj=ifelse((collapseAge=="yes"&reallocate=="keep")|collapseAge=="no",ageBinAdj,NA)) %>% 
+  group_by(PLT_CN,mapcode,gesp2,genuspec,spN,collapseAge) %>%
+  arrange(PLT_CN,mapcode,gesp2,genuspec,spN,collapseAge,reallocAgeBinAdj) %>%
+  mutate(reallocAgeBinAdj=ifelse(is.na(reallocAgeBinAdj),first(reallocAgeBinAdj),reallocAgeBinAdj)) %>% 
+  mutate(reallocAgeBinAdj2 =ifelse(is.na(reallocAgeBinAdj)& collapseAge=="yes",first(ageBinAdj),reallocAgeBinAdj)) %>% 
+  mutate(reallocAgeBinAdj3=ifelse(is.na(reallocAgeBinAdj2) & reallocate=="keep" & is.na(collapseAge),ageBinAdj,reallocAgeBinAdj2)) %>% 
+  # reallocate OTHR and cohorts that can't be reallocated by age or are still too small 
+      # 1 collapse records
+  group_by(PLT_CN,mapcode,gesp2,genuspec,spN,reallocAgeBinAdj3) %>% 
+  summarise(sumCohortAGBgm2act=sum(sumCohortAGBgm2act,na.rm=TRUE),
+            pctPlotBioact=round(sum(pctPlotBioact,na.rm=TRUE)*100,2)) %>%    
+      # 2 recalculate cohort acpct
+      group_by(PLT_CN,mapcode) %>% 
+      arrange(PLT_CN,mapcode,pctPlotBioact) %>% 
+      mutate(acpct=round(cumsum(pctPlotBioact),2) ) %>%
+  #this is for the final reallocation - for OTHER spp, cohorts where reallocAgeBinAdj3 is NA and maybe other small cohorts
+      mutate(reallocate=ifelse(acpct< 5 |gesp2=="OTHR"|is.na(reallocAgeBinAdj3),"reallocate","keep")) 
+#
+length(unique(cwout3$mapcode))
+
+#just the biomass for reallocation
+mapcodeReallocate <- cwout3 %>% 
+  filter(reallocate=="reallocate") %>% 
+  group_by(PLT_CN,mapcode) %>% 
+  summarise(trealloc=sum(sumCohortAGBgm2act,na.rm=TRUE),nspcohort=length(pctPlotBioact)) 
+
+length(unique(mapcodeReallocate$mapcode)) #mapcodes down to 2606
+
+# this filters for the more abundant cohorts and then joins the uncommon realloc
+#sppdFormatted <- cwout3 %>% #2/24 MC take out reallocation (old)
+sppdFormatted <- tree_dataSummary %>%  #new attempt 2/24
+  #filter(mapcode==9) %>% #for testing only
+  #rename(ageBinAdj=reallocAgeBinAdj3) %>% #old
+  #filter(reallocate=="keep") %>% #old
+  filter(gesp2 != "OTHR") %>% #new 2/24
+  group_by(PLT_CN,mapcode) %>% 
+  mutate(filteredbio=sum(sumCohortAGBgm2act,na.rm=TRUE)) %>% 
+  ungroup() %>% 
+  mutate(filteredprop=round(sumCohortAGBgm2act/filteredbio,2)) %>% 
+  left_join(mapcodeReallocate) %>% 
+  #replace_na(list("trealloc"=0)) %>% #old
+  mutate(tCohortAGBgm2=round(sumCohortAGBgm2act+(filteredprop*trealloc)) ) %>% 
+  ungroup() %>% 
+  mutate(ageBinAdj=ifelse(ageBinAdj>150,150,ageBinAdj)) %>%#added 3/17/2025
+  filter(!is.na(ageBinAdj)) %>% #new 
+  dplyr::select(PLT_CN,mapcode,genuspec,ageBinAdj,tCohortAGBgm2) %>% 
+  #
+  #mutate(agebio = paste0(ageBinAdj," (",tCohortAGBgm2,")")) %>% # uncomment for LANDISv7
+  #
+  group_by(PLT_CN,mapcode,genuspec) %>% 
+  arrange(PLT_CN,mapcode,genuspec,ageBinAdj) 
+#mapcode0 is not working, not sure the magic formula
+#if necessary set this up to be "pinutaed" 1 0
+mapcode0 <- data.frame("MapCode" = 0,
+                          "SpeciesName"=NA,
+                          "CohortAge"=0,
+                          "CohortBiomass"=0)
+length(unique(sppdFormatted$mapcode))
+
+#Write ic csv for landis 8  -assuming all mapcodes have landis spp
+  sppdFormatted %>% 
+  ungroup() %>% 
+  dplyr::select(MapCode=mapcode,SpeciesName=genuspec,CohortAge=ageBinAdj,CohortBiomass=tCohortAGBgm2) %>%
+ bind_rows(mapcode0) %>% 
+  write.csv(paste0(textFilesOut,"/ic_",icMapName,"_",Sys.Date(),".csv"),row.names=FALSE)
+
+  # IMPT MANUALLY ADD MAPCODE 0 or change mapcode0 to include pinutaed
+
+#
+```
+
+#maura skip this
+#run this for calibration simulations
+#working version 8/4/2025
+```{r for calibration - getting the plot growth}
+targConcatPlots <- targPlotsdf %>% pull(concatPlot) %>% unique()
+targConcatPlotsWshort <- targPlotsdf %>% left_join(pltcncw) %>% dplyr::select(-c(PLT_CN,INVYR)) %>% distinct() #this is giving us mapcode, concatPlot, STATE
+
+#targConcatPlots <- targPlotsdf %>% left_join(pltcncw) %>% pull(concatPlot) %>% unique() #use this when you don't already have concatPlot
+#targConcatPlotsWshort <- targPlotsdf %>% left_join(pltcncw) %>% dplyr::select(-c(PLT_CN,INVYR))
+
+lookup2 <- lookup %>% ungroup  %>% dplyr::select(genuspec,"b1","b2","b3","b4","b5") #"SPCD"=spp_num, %>% mutate(gesp=toupper(paste0(substr(genuspec,1,2),substr(genuspec,5,6))))
+
+#
+
+ liveTreesImp2calibv <- alltrees %>% #alltrees
+    unite(concatPlot,STATECD,UNITCD,COUNTYCD,PLOT,sep="_",remove=FALSE) %>% 
+  dplyr::select(concatPlot,CN,PLT_CN,PLOT,SUBP,STATECD,INVYR,PLOT,SUBP,TREE,STATUSCD,SPCD,DIA,HT,CCLCD,SITREE,TPA_UNADJ,CARBON_AG,CARBON_BG) %>% 
+  drop_na(DIA) %>% 
+  filter(INVYR >= 1999) %>% #all earlier years do not have HT or TPA_ADJ
+  filter(STATUSCD==1) %>% 
+#pull all  survey instances of a plot
+  right_join(targPlotsdf %>% dplyr::select(-PLT_CN) %>% distinct()) %>% #this filters to only include target concatPlots and adds mapcode
+  #2024 plotAreaForest improvement - add to ICfromFIA
+  left_join(plotCondft) %>% 
+  #
+  group_by(PLT_CN,mapcode,plotAreaForest) %>% 
+  mutate(nsubp=length(unique(SUBP))) %>% 
+  ungroup() %>% 
+  dplyr::select(concatPlot,CN,PLT_CN,PLOT,SUBP,mapcode,STATECD,INVYR,MEASYEAR,PLOT,SUBP,plotAreaForest,nsubp,topSiteCLCD,topSICOND,topFORTYPCD,topSTDAGE,TREE,SPCD,DIA,HT,CCLCD,SITREE,TPA_UNADJ,CARBON_AG,CARBON_BG) %>% 
+  mutate(agb_g= 2*(CARBON_AG)*453.592, #carbon pounds to biomass g
+         AGBMg=agb_g*gramToMegagram,
+         AGCMg=AGBMg/2,
+         AGCMgha=ifelse(DIA<5,AGCMg*(10000/(microplotArea*nsubp)),AGCMg* (10000/plotAreaForest) ),
+         agb_gm2=AGCMgha*2*100) %>% 
+ # left_join(cond1) %>% 
+  left_join(spcdlandisspp) %>% 
+  #left_join(landisspp) %>% 
+  mutate(gesp2=ifelse(is.na(as.character(gesp)),"OTHR",as.character(gesp)),
+         H_assigned=ifelse(is.na(HT),4,HT)) %>% 
+  mutate(SIndex=ifelse(is.na(topSICOND)&topSiteCLCD==6, 40,topSICOND),
+         SIndex=ifelse(is.na(topSICOND)&topSiteCLCD==7,20,topSICOND)) %>% 
+  mutate(SIndex=replace_na(SIndex,53)) %>% 
+  left_join(lookup2) %>% #si coef  #(sicoef[,c(3,10,4:8)]) %>%   #
+  mutate(calc_age=round(ifelse(H_assigned <= (b1*SIndex^(b2)),
+                               (log (1-(H_assigned/(b1 * SIndex^(b2)))^(1/(b4*(SIndex^(b5)))))/b3),
+                               (log (1-(((b1*SIndex^(b2))-1)/(b1 * SIndex^(b2)))^(1/(b4*(SIndex^(b5)))))/b3 ) ),0 )) %>% 
+  mutate(calc_age=as.integer(ifelse(calc_age==0,1,calc_age)) ) %>% 
+   #fill missing stand ages with maximum calc_age for the plot
+   group_by(PLT_CN) %>% 
+  mutate(topSTDAGEfilled= ifelse(is.na(topSTDAGE), max(calc_age,na.rm=TRUE),topSTDAGE) ) %>% 
+   group_by(concatPlot,SUBP,TREE) %>% 
+   arrange(concatPlot,SUBP,TREE,INVYR) %>% 
+   #increase topSTDAGEfilled=0 
+   mutate(topSTDAGEfilled = ifelse(topSTDAGEfilled==0,(lead(topSTDAGEfilled) - (lead(INVYR)-INVYR)), topSTDAGEfilled) ) %>% 
+   replace_na(list(topSTDAGEfilled = 5 )) %>% 
+   ungroup() %>% 
+  mutate(calc_ageAdj=ifelse(calc_age <= topSTDAGEfilled,calc_age,topSTDAGEfilled)) %>% 
+
+   # IMPORTANT BINS ARE SET IN OBJECT in call in chunk
+    #mutate(calcAgeCut=cut(calc_age, breaks=c(ageBins, max(calc_age,na.rm=TRUE)+1  ) ) )  
+  mutate(calcAgeCut=cut(calc_ageAdj, breaks=c(ageBins, round(max(calc_ageAdj,na.rm=TRUE)+1,0)  ) ) ) %>% 
+  filter(!is.na(CN)) %>% 
+  mutate(SPCD=ifelse(gesp2!="OTHR",SPCD,NA))
+
+ 
+ #identify recruits  #there are none
+anyRecruits <- liveTreesImp2calibv %>% ungroup() %>% dplyr::select(mapcode,concatPlot,PLT_CN,PLOT,SUBP,TREE,MEASYEAR) %>% distinct() %>% group_by(mapcode,concatPlot,PLOT) %>% arrange(mapcode,concatPlot,PLOT,MEASYEAR) %>% 
+  mutate(  firstMEASYEAR=min(MEASYEAR),lastMEASYEAR=max(MEASYEAR)) %>% 
+  filter(MEASYEAR %in% c(firstMEASYEAR,lastMEASYEAR)) %>% 
+  group_by(mapcode,concatPlot,PLOT,SUBP,TREE) %>% 
+  arrange(mapcode,concatPlot,PLOT,SUBP,TREE,MEASYEAR) %>% mutate(nSurveyTree=length(TREE),change=ifelse(nSurveyTree==2,"static", ifelse(nSurveyTree==1 & MEASYEAR==firstMEASYEAR,"willDropOut",ifelse(nSurveyTree==1 &MEASYEAR==lastMEASYEAR,"recruit",NA))))
+#
+# anyRecruits %>% group_by(change) %>% tally()
+#
+ 
+liveTreesImp2overTime <- liveTreesImp2calibv %>%
+  # decrease high biomass cohorts
+  dplyr::select(mapcode,CN,PLT_CN,concatPlot,MEASYEAR,INVYR,PLOT,SUBP,TREE,SPCD,DIA,HT,agb_gm2,AGCMgha,gesp2,genuspec,calc_age,calcAgeCut,STATECD,topFORTYPCD) %>% 
+  #mutate(harvest=ifelse(PLT_CN %in% harvSince1999,"yes","no")) %>% 
+  left_join(harvYrSince1999) %>% 
+  # plot bio - this is from carbon ag . for the flux figure i have been using the max of either the biomass table or tree table
+  group_by(concatPlot) %>% 
+  group_by(concatPlot,PLT_CN,MEASYEAR) %>% 
+  mutate(plotAGBgm2=sum(agb_gm2,na.rm=TRUE)) %>%
+  group_by(concatPlot,SUBP,TREE) %>% 
+  arrange(concatPlot,SUBP,TREE,MEASYEAR) %>%
+   mutate(yrsBetween=MEASYEAR-lag(MEASYEAR),
+         treeGrowth=agb_gm2-lag(agb_gm2),
+          #treeGrowth=ifelse(harvest=="no",agb_gm2-lag(agb_gm2),NA),
+         treeAnnGrowth=(treeGrowth/yrsBetween),
+         treeAnnGrowthMgha=treeAnnGrowth/100) %>% 
+ group_by(concatPlot,PLT_CN,INVYR) %>% 
+  mutate(plotAnnGrowthMgha=sum(treeAnnGrowthMgha,na.rm=TRUE)) %>% 
+  group_by(concatPlot) %>% 
+  mutate(concatPlotAnnGrowthMgha=mean(plotAnnGrowthMgha,na.rm=TRUE),
+         firstMEASYEAR=min(MEASYEAR),lastMEASYEAR=max(MEASYEAR)) %>% 
+  group_by(concatPlot,SUBP,TREE) %>% 
+  mutate(meanTreeAnnGrowth=mean(treeAnnGrowthMgha,na.rm=TRUE),surveyLength=lastMEASYEAR-firstMEASYEAR) %>% 
+ filter(MEASYEAR==firstMEASYEAR|MEASYEAR==lastMEASYEAR) #added test 7/28/2025 not sure this is necessary
+
+
+
+#12/3/2024 - keeping rare
+tree_dataSummaryAll <- liveTreesImp2overTime %>% #includes Rare # NoRare
+  #drop_na(genuspec) %>% #removes all non landis species 
+  ungroup() %>% 
+  dplyr::select(mapcode,concatPlot,PLT_CN,MEASYEAR,firstMEASYEAR,lastMEASYEAR,surveyLength,calcAgeCut,gesp2,genuspec,agb_gm2,yrsBetween,treeAnnGrowthMgha,topFORTYPCD,plotAGBgm2act=plotAGBgm2,harvYrs) %>% #,concatPlotAnnGrowthMgha
+  dplyr::select(PLT_CN,everything()) %>% 
+  separate(calcAgeCut,into=c("delete","bin"),sep=c(","), remove=FALSE, convert=TRUE) %>% 
+  mutate(ageBin=as.integer(substr(bin,1, nchar(bin)-1)) ) %>% 
+  mutate(ageBin=replace(ageBin,ageBin > 150,175)) %>% #changed 9/26 from >150
+  left_join(landisspp %>% rename(gesp2=gesp)) %>% 
+  mutate(ageBinAdj=ifelse(ageBin<=longevity,ageBin,(longevity-CBS) ) ) %>%
+  group_by(concatPlot,PLT_CN,MEASYEAR,ageBinAdj,gesp2,genuspec,plotAGBgm2act) %>% 
+  mutate(sumCohortAGBgm2act=round(sum(agb_gm2,na.rm=TRUE))) %>% 
+  ungroup() %>% 
+  mutate(pctPlotBioact=sumCohortAGBgm2act/plotAGBgm2act) %>% 
+  #this makes "NoRare"
+  #filter(pctPlotBioact>0.05) %>% 
+  group_by(mapcode,concatPlot,PLT_CN,MEASYEAR,firstMEASYEAR,lastMEASYEAR,surveyLength,ageBinAdj,gesp2,genuspec,plotAGBgm2act,sumCohortAGBgm2act,pctPlotBioact,harvYrs) %>%
+  summarise(ftc=max(topFORTYPCD),
+            nStems=length(PLT_CN)) %>%
+  #arrange(concatPlot,MEASYEAR,SPCD,ageBinAdj ) %>% 
+  left_join(forest_type_ref[,c(1,2)],by=c("ftc"="VALUE")) %>% 
+  
+  ####################### temp max bio override 8/5/2025
+  mutate(maxBio = 30000,
+         sumCohortAGBgm2adj=ifelse(sumCohortAGBgm2act>maxBio,maxBio,sumCohortAGBgm2act)) %>% 
+  ##############
+
+  # original  #############################  reduce loss from high bio cohorts
+  # left_join(sppMaxBio %>% rename("gesp2"="gesp")) %>% 
+  #   replace_na(list("maxBio"= 16721)) %>% #16721 is the mean maxBio for the 25 species simu 
+  # mutate(sumCohortAGBgm2adj=ifelse(sumCohortAGBgm2act>maxBio,maxBio,sumCohortAGBgm2act)) %>% 
+  ############################
+
+  group_by(MEASYEAR,firstMEASYEAR,PLT_CN,mapcode) %>% 
+  mutate(plotAGBgm2adj=sum(sumCohortAGBgm2adj),
+         pctPlotBioadj=sumCohortAGBgm2adj/plotAGBgm2adj,
+         AGBgm2noRare=sum(sumCohortAGBgm2act,na.rm=TRUE)) %>% 
+  droplevels() %>% 
+  ungroup() %>% 
+  mutate(landisYear1=median(firstMEASYEAR),
+         rescaleValue=ifelse(firstMEASYEAR==landisYear1,0,
+                             ifelse(firstMEASYEAR != landisYear1,landisYear1-firstMEASYEAR,NA)),# was < until 7/28/2025
+         landisYear=MEASYEAR+rescaleValue) 
+# for IC csv
+ #this is ONLY for comparing to the over time version
+#TODO use cwout3 reallocation for non calibration 
+cwout3 <- tree_dataSummaryAll %>% 
+  #added 12/3/2024 - not over time. this removes all the later timestep survey periods for writing out to and IC file
+  filter(landisYear==landisYear1) %>% 
+  
+  dplyr::select(landisYear,PLT_CN,mapcode,ageBinAdj,gesp2,genuspec,sumCohortAGBgm2act,pctPlotBioact) %>% 
+  group_by(PLT_CN,mapcode,landisYear) %>% 
+  arrange(PLT_CN,mapcode,landisYear,pctPlotBioact) %>% 
+  mutate(spN=length(unique(genuspec))) %>% 
+  mutate(acpct=round(cumsum(pctPlotBioact),3) ) %>%
+  
+  mutate(reallocate=ifelse(gesp2=="OTHR","other",
+                     ifelse((pctPlotBioact<0.05 | acpct< 0.05) & gesp2 !="OTHR","reallocateAge","keep")) ) %>% 
+  # try to reallocate to a different cohort of the same species first
+  group_by(PLT_CN,mapcode,landisYear,gesp2) %>% 
+  arrange(PLT_CN,mapcode,landisYear,gesp2,ageBinAdj) %>% 
+  mutate(collapseAge= ifelse((reallocate =="reallocateAge" & (lead(reallocate)== "keep"|lead(reallocate)=="reallocateAge" ))|lag(reallocate)=="reallocateAge", "yes",
+                            ifelse((reallocate=="keep"  & lag(reallocate)== "reallocateAge") , "yes","no"
+                                        ))) %>% 
+  # the slow path to filling in the collapsed age bins
+  mutate(reallocAgeBinAdj=ifelse((collapseAge=="yes"&reallocate=="keep")|collapseAge=="no",ageBinAdj,NA)) %>% 
+  group_by(PLT_CN,mapcode,landisYear,gesp2,genuspec,spN,collapseAge) %>%
+  arrange(PLT_CN,mapcode,landisYear,gesp2,genuspec,spN,collapseAge,reallocAgeBinAdj) %>%
+  mutate(reallocAgeBinAdj=ifelse(is.na(reallocAgeBinAdj),first(reallocAgeBinAdj),reallocAgeBinAdj)) %>% 
+  mutate(reallocAgeBinAdj2 =ifelse(is.na(reallocAgeBinAdj)& collapseAge=="yes",first(ageBinAdj),reallocAgeBinAdj)) %>% 
+  mutate(reallocAgeBinAdj3=ifelse(is.na(reallocAgeBinAdj2) & reallocate=="keep" & is.na(collapseAge),ageBinAdj,reallocAgeBinAdj2)) %>% 
+  #fill in "OTHR" age as 50
+  mutate(reallocAgeBinAdj4=ifelse(is.na(reallocAgeBinAdj3) & gesp2 =="OTHR",50,reallocAgeBinAdj3)) %>% 
+  ungroup() %>% 
+  #replace_na(list(reallocAgeBinAdj4 = ageBinAdj)) %>% 
+  mutate(reallocAgeBinAdj4 = coalesce(reallocAgeBinAdj4,ageBinAdj)) %>% 
+  #filter(mapcode==12646) %>% 
+  group_by(PLT_CN,mapcode,landisYear,gesp2,genuspec,spN,reallocAgeBinAdj4) %>% 
+  summarise(sumCohortAGBgm2act=sum(sumCohortAGBgm2act,na.rm=TRUE),
+            pctPlotBioact=round(sum(pctPlotBioact,na.rm=TRUE)*100,2)) 
+  #filter(mapcode==17979 & gesp2=="BEAL") %>% 
+# view(cwout3)  
+  
+
+# prep for landis ic csv
+sppdFormatted <- cwout3 %>% 
+  #filter(mapcode==9) %>% #for testing only
+  group_by(PLT_CN,mapcode) %>% 
+  dplyr::select(PLT_CN,mapcode,genuspec,ageBinAdj=reallocAgeBinAdj4,tCohortAGBgm2=sumCohortAGBgm2act) %>% 
+  mutate(agebio = paste0(ageBinAdj," (",tCohortAGBgm2,")")) %>% 
+  group_by(PLT_CN,mapcode,genuspec) %>% 
+  arrange(PLT_CN,mapcode,genuspec,ageBinAdj) 
+#
+length(sppdFormatted %>% pull(mapcode) %>% unique())
+# Write ic csv for landis 8
+icMapName
+  sppdFormatted %>% 
+    filter(ageBinAdj > 0) %>% 
+    mutate(genuspec=ifelse(is.na(genuspec),"otxxhrxx",genuspec)) %>% 
+  ungroup() %>% 
+  dplyr::select(MapCode=mapcode,SpeciesName=genuspec,CohortAge=ageBinAdj, CohortBiomass=tCohortAGBgm2) %>% 
+write.csv(paste0(textFiles,"/",icMapName,".csv"),row.names=FALSE)
+  paste0(textFiles,"/",icMapName,".csv")
+  
+## keep going
+  #####
+  # create the fia t2 for compare
+
+sppdFormattedcalib <- tree_dataSummaryAll %>% 
+   # filter(landisYear!=landisYear1) %>% 
+  dplyr::select(landisYear,PLT_CN,mapcode,ageBinAdj,gesp2,genuspec,sumCohortAGBgm2act,pctPlotBioact,plotAGBgm2act,MEASYEAR,surveyLength) %>% 
+         mutate(genuspec=ifelse(is.na(genuspec),"otxxhrxx",genuspec)) %>% 
+    group_by(landisYear,PLT_CN,mapcode,gesp2,genuspec,plotAGBgm2act,MEASYEAR,surveyLength) %>% 
+    summarise(sppBiogm2act=sum(sumCohortAGBgm2act,na.rm=TRUE)) %>% 
+    group_by(landisYear,PLT_CN,mapcode) %>% 
+    mutate(spN=length(unique(genuspec)),
+            source= "fia") 
+  
+# view(sppdFormattedcalib)  
+
+#
+outputDir <- textFiles # wdRoot #
+
+write.csv(sppdFormattedcalib,paste0(outputDir,"/IC_sspdFormattedWRare",icMapName,"_overTime",".csv"),row.names=FALSE) #no reallocation
+#
+# summaries
+liveTreesImp2calibv %>% filter(topSTDAGEfilled==0) %>% nrow()
+sppdFormatted %>% 
+    filter(ageBinAdj > 0) %>% 
+    mutate(genuspec=ifelse(is.na(genuspec),"otxxhrxx",genuspec)) %>% 
+  group_by(mapcode,genuspec) %>% 
+  tally() %>% group_by(mapcode) %>% 
+  summarise(nSpp=length(genuspec),meanNcohort=round(mean(n),2),sd=round(sd(n),3)) %>% 
+  arrange(desc(meanNcohort))
+#
+sppdFormatted %>% 
+    filter(ageBinAdj > 0) %>% 
+    mutate(genuspec=ifelse(is.na(genuspec),"otxxhrxx",genuspec)) %>% 
+  group_by(mapcode,genuspec) %>% 
+  tally() %>% group_by(mapcode) %>% 
+  summarise(nSpp=length(genuspec),meanNcohort=round(mean(n),2),sd=round(sd(n),3)) %>% 
+  arrange(desc(meanNcohort)) %>% summary()
+#
+anyRecruits %>% group_by(change) %>% tally()
+sppdFormatted %>% pull(mapcode) %>% unique() %>% sort()
+targPlotsdf %>% pull(mapcode) %>% unique() %>% sort()
+#
+```
+
+#originals in dated IMAXv3_20250813...
+
+#added these 8/13/2025
+
+#maura do this but you will need to tweak
+write litter and cwd rasters and eco txt files - in process 3/13/2025
+```{r litter and cwd rasters}
+library(terra)
+# r <- rast(icras)
+#make ic raster NAs 0
+icras2 <- rast("D:/mcollins/SCE/petershamICmasked.tif") #there's an icras above 
+x <- icras2   #MC: added 2 on 
+#x <- icras  
+x[is.na(x)] <- 0
+x[is.nan(x)] <- 0
+x[is.infinite(x)] <- 0
+x[is.null(x)] <- 0
+writeRaster(x,paste0(wdRoot,"/inputFolders/SpatialData/",icMapNameOut,".tif"), overwrite=TRUE,datatype="INT2S")
+# r <-  rast(icras) %>% subset(1)
+# 
+#write icras #write litter and cwd rasters
+ rout <- plotCondft %>% 
+  right_join(targPlotsdf) %>% 
+  dplyr::select(PLT_CN,mapcode,meanCARBON_DOWN_DEAD,meanCARBON_LITTER) %>% 
+  mutate(cwd=round(meanCARBON_DOWN_DEAD*acreTom2*tonTog,0),
+         litter=round(meanCARBON_LITTER*acreTom2*tonTog,0) ) %>% 
+  dplyr::select(mapcode,cwd,litter) 
+ 
+cwdmat <- as.matrix(rout[,c(1,2)])
+littermat <- as.matrix(rout[,c(1,3)])
+
+#
+cwdr <- classify(icras2,cwdmat)
+cwdr[is.na(cwdr)] <- 0
+cwdr[is.nan(cwdr)] <- 0
+cwdr[is.infinite(cwdr)] <- 0
+cwdr[is.null(cwdr)] <- 0
+#writeRaster(cwdr,paste0(spatialDir,"/cwd0_",icMapName,".img"),overwrite=TRUE,datatype="INT2S")
+writeRaster(cwdr,paste0(wdRoot,"/inputFolders/SpatialData/","cwd0_",icMapNameOut,".tif"),overwrite=TRUE,datatype="INT2S")
+
+
+litterr <-classify(icras2,littermat)
+litterr[is.na(litterr)]<- 0
+litterr[is.nan(litterr)]<- 0
+litterr[is.infinite(litterr)] <- 0
+litterr[is.null(litterr)] <- 0
+writeRaster(litterr,paste0(wdRoot,"/inputFolders/SpatialData/","litter0_",icMapNameOut,".tif"),overwrite=TRUE,datatype="INT2S")
+#
+#write 1:length of cells raster
+ x <- icras2
+values(x) <- 1:ncell(x)
+x[is.na(x)] <- 0
+x[is.nan(x)] <- 0
+x[is.infinite(x)] <- 0
+x[is.null(x)] <- 0
+writeRaster(x,paste0(wdRoot,"/inputFolders/SpatialData/","nCells_",icMapNameOut,".tif"), overwrite=TRUE,datatype="INT4S")
+
+# #ecoregion as img or rename tif
+#ecoras <- rast(paste0(inputRasterDir,"/",ecorasVec[i] ))
+x <- ecoras2
+x[is.na(x)] <- 0
+x[is.nan(x)] <- 0
+x[is.infinite(x)] <- 0
+x[is.null(x)] <- 0
+writeRaster(x,paste0(wdRoot,"/inputFolders/SpatialData/","eco_",icMapNameOut,".tif"), overwrite=TRUE,datatype="INT2S")
+#
+```
+
+#maura do this
+#write eco text files - subset full file
+```{r write eco text files}
+## MC 2/1/26: I changed ecoras to ecoras2 to see if using the ecoregion raster I already had 
+#could work to make the ecoregion text files
+
+
+# full New England ecoregion path and text file name
+# this is the full pnet ecoregion file that you are reading in
+wdInputTextDir <- "Y:/LANDIS/INPUT_DATA_REGIONAL"
+pnetEcoTextNameFull <- "ecoregions_NewEngland_CCSM4rcp85pnetEcoParamHardCode"  #this should include all ecoregions (climate change)
+#pnetEcoTextNameFull <- "ecoregions_NewEngland_CCSM4rcp85pnetEcoParamSTATIC2004" #this is the static files, not the climate change
+scenarioEcoTextNameFull <-  "ecoregions_NewEngland2022-05-20"
+
+# pnet ecotext files
+# full New England ecoregion path and text file name
+# this is the full pnet ecoregion file that you are reading in
+
+#new file name
+textFilesOut <-  "D:/mcollins/SCE" #new output place to stick the files in 
+paste0(textFilesOut,"/ecoregions_",icMapNameOut,"_",climateName,".txt")
+#
+# pull ecoregion raster values from full ecoregion raster
+
+ecoLandVal <- as.data.frame(freq(ecoras2) ) %>% pull(value) 
+
+#read in New England ecoregion text files
+# head(ecoLandVal)
+paste0(wdInputTextDir,"/",pnetEcoTextNameFull,".txt")
+ecoTxt <- read.table(paste0(wdInputTextDir,"/",pnetEcoTextNameFull,".txt"),header=TRUE,skip=1)
+#
+# change to daymet or whatever climateRegion and climateName you are using
+ecoLandTextBody <- ecoTxt %>% 
+  separate(climateFileName,c(NA,NA,"climateRegion",NA,NA,NA,NA) ) %>% 
+  mutate(climateFileName=paste0(climateName,"_ecoregClimateFiles/",climateRegion,"_ecoreg_",climateName,"_climate.txt")) %>% 
+  mutate(EcoregionParameters=str_remove_all(as.character(EcoregionParameters),">>") ) %>% 
+  mutate(value=substr(EcoregionParameters,4,nchar(EcoregionParameters))) %>% 
+  filter(value %in% ecoLandVal) %>% 
+  dplyr::select(EcoregionParameters,PrecLossFrac,climateFileName,SoilType,RootingDepth,LeakageFrac,SnowSublimFrac)
+ 
+#
+#add back landis heading and write out  
+fullOutName <- paste0(textFilesOut,"/ecoregions_",icMapNameOut,"_",climateName,".txt")
+fullOutName
+cat("LandisData  EcoregionParameters \n",file=fullOutName   )
+write.table(ecoLandTextBody,fullOutName,quote=FALSE,sep="\t",append=TRUE,row.names=FALSE)  #
+
+# #
+# landis ecoregion text file - bring in full New England, subset and write out to new location
+paste0(wdInputTextDir,"/",scenarioEcoTextNameFull,".txt")
+ecoregionsBody <- read.table(paste0(wdInputTextDir,"/",scenarioEcoTextNameFull,".txt"),header=FALSE,skip=2,fill=FALSE)
+colnames(ecoregionsBody) <- c(">>Active","MapCode","ecoregion_name","description")
+ecoregBodyOut <- ecoregionsBody %>% 
+  mutate(`>>Active`=str_remove_all(as.character(`>>Active`),">>") )  %>% 
+  mutate(description=str_squish(description)) %>% 
+  mutate(description=str_replace_all(description,fixed(" "),"_")) %>% #remove spaces in description for ease in writing out textfile
+  filter(MapCode %in% c(0,ecoLandVal) )
+
+# landis ecoregion text file - bring in full New England, subset and write out to new location
+landisEcoTextFullNameOut <- paste0(textFilesOut,"/ecoregions_",icMapNameOut,".txt") 
+
+  cat("LandisData  Ecoregions \n",file=landisEcoTextFullNameOut   )
+ # 
+  write.table(ecoregBodyOut,landisEcoTextFullNameOut  ,quote=FALSE,sep="\t",append=TRUE,row.names=FALSE)  #
+#
+ 
+```
+
